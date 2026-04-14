@@ -1,72 +1,57 @@
-const BASE_URL = 'https://chrome.browserless.io';
+// Browserless BaaS v2
+// Auth: Authorization: Bearer <token>
+// Endpoint: https://production-sfo.browserless.io (US)
 
-function getToken() {
+const BASE_URL = process.env.BROWSERLESS_BASE_URL ?? 'https://production-sfo.browserless.io';
+
+function headers() {
   const token = process.env.BROWSERLESS_API_KEY;
   if (!token) throw new Error('BROWSERLESS_API_KEY not set');
-  return token;
+  return {
+    'Content-Type': 'application/json',
+    Authorization: `Bearer ${token}`,
+  };
 }
 
-export interface ScrapeResult {
-  url: string;
-  title: string;
-  content: string;
-}
-
-export interface ScreenshotResult {
-  image: string; // base64
-}
-
-// Get full page HTML content
-export async function getPageContent(url: string): Promise<ScrapeResult> {
-  const res = await fetch(`${BASE_URL}/content?token=${getToken()}`, {
+export async function takeScreenshot(url: string): Promise<{ image: string }> {
+  const res = await fetch(`${BASE_URL}/chromium/screenshot`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ url, waitFor: 2000 }),
+    headers: headers(),
+    body: JSON.stringify({ url, options: { type: 'png', fullPage: true }, waitForTimeout: 2000 }),
   });
+  if (!res.ok) throw new Error(`Screenshot failed: ${res.status} ${await res.text()}`);
+  const buf = await res.arrayBuffer();
+  return { image: Buffer.from(buf).toString('base64') };
+}
+
+export async function getPageContent(url: string): Promise<{ url: string; title: string; content: string }> {
+  const res = await fetch(`${BASE_URL}/chromium/content`, {
+    method: 'POST',
+    headers: headers(),
+    body: JSON.stringify({ url, waitForTimeout: 2000 }),
+  });
+  if (!res.ok) throw new Error(`Content failed: ${res.status} ${await res.text()}`);
   const html = await res.text();
   const title = html.match(/<title>(.*?)<\/title>/i)?.[1] ?? '';
   return { url, title, content: html };
 }
 
-// Take a screenshot (returns base64 PNG)
-export async function takeScreenshot(url: string): Promise<ScreenshotResult> {
-  const res = await fetch(`${BASE_URL}/screenshot?token=${getToken()}`, {
+export async function runScript(code: string, context?: Record<string, unknown>) {
+  const res = await fetch(`${BASE_URL}/chromium/function`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      url,
-      options: { fullPage: true, type: 'png' },
-      waitFor: 2000,
-    }),
+    headers: headers(),
+    body: JSON.stringify({ code, context: context ?? {} }),
   });
-  const buffer = await res.arrayBuffer();
-  const image = Buffer.from(buffer).toString('base64');
-  return { image };
-}
-
-// Scrape structured data from a page
-export async function scrapePage(url: string, selectors: Record<string, string>) {
-  const res = await fetch(`${BASE_URL}/scrape?token=${getToken()}`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      url,
-      elements: Object.entries(selectors).map(([name, selector]) => ({
-        selector,
-        timeout: 5000,
-      })),
-      waitFor: 2000,
-    }),
-  });
+  if (!res.ok) throw new Error(`Script failed: ${res.status} ${await res.text()}`);
   return res.json();
 }
 
-// Execute arbitrary Puppeteer script via /function endpoint
-export async function runScript(code: string, context?: Record<string, unknown>) {
-  const res = await fetch(`${BASE_URL}/function?token=${getToken()}`, {
+export async function scrapePage(url: string, selectors: Record<string, string>) {
+  const res = await fetch(`${BASE_URL}/chromium/scrape`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ code, context: context ?? {} }),
+    headers: headers(),
+    body: JSON.stringify({ url, elements: Object.values(selectors).map(s => ({ selector: s })), waitForTimeout: 2000 }),
   });
+  if (!res.ok) throw new Error(`Scrape failed: ${res.status} ${await res.text()}`);
   return res.json();
 }

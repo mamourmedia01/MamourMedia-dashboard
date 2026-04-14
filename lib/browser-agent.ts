@@ -1,4 +1,4 @@
-const BROWSERLESS_URL = 'https://chrome.browserless.io';
+const BROWSERLESS_URL = process.env.BROWSERLESS_BASE_URL ?? 'https://production-sfo.browserless.io';
 const ANTHROPIC_URL = 'https://api.anthropic.com/v1/messages';
 
 export interface AgentStep {
@@ -93,10 +93,10 @@ export async function runBrowserAgent(
     if (parsed.action === 'screenshot' && parsed.url) {
       onStep({ type: 'browse', content: `Taking screenshot of ${parsed.url}` });
       try {
-        const res = await fetch(`${BROWSERLESS_URL}/screenshot?token=${token}`, {
+        const res = await fetch(`${BROWSERLESS_URL}/chromium/screenshot`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ url: parsed.url, options: { fullPage: true }, waitFor: 2000 }),
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+          body: JSON.stringify({ url: parsed.url, options: { type: 'png', fullPage: true }, waitForTimeout: 2000 }),
         });
         const buf = await res.arrayBuffer();
         const img = Buffer.from(buf).toString('base64');
@@ -114,9 +114,9 @@ export async function runBrowserAgent(
     if (parsed.action === 'browse' && parsed.code) {
       onStep({ type: 'browse', content: `Running browser script…` });
       try {
-        const res = await fetch(`${BROWSERLESS_URL}/function?token=${token}`, {
+        const res = await fetch(`${BROWSERLESS_URL}/chromium/function`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
           body: JSON.stringify({ code: parsed.code }),
         });
         const data = await res.json();
