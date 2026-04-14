@@ -51,6 +51,128 @@ const activeSkills = [
   "timeline-report", "do", "claude-code-plugin-release", "vercel-react-native-skills",
 ];
 
+function AgentPanel() {
+  const [task, setTask] = useState("");
+  const [steps, setSteps] = useState<{ type: string; content: string; screenshot?: string }[]>([]);
+  const [running, setRunning] = useState(false);
+  const bottomRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: "smooth" }); }, [steps]);
+
+  const runAgent = async () => {
+    if (!task.trim() || running) return;
+    setSteps([]);
+    setRunning(true);
+
+    try {
+      const res = await fetch("/api/agent", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ task }),
+      });
+      const reader = res.body!.getReader();
+      const decoder = new TextDecoder();
+      let buf = "";
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buf += decoder.decode(value, { stream: true });
+        const lines = buf.split("\n");
+        buf = lines.pop() ?? "";
+        for (const line of lines) {
+          if (!line.startsWith("data: ")) continue;
+          const payload = line.slice(6);
+          if (payload === "[DONE]") break;
+          try {
+            const step = JSON.parse(payload);
+            setSteps((prev) => [...prev, step]);
+          } catch { /* ignore */ }
+        }
+      }
+    } catch (e) {
+      setSteps((prev) => [...prev, { type: "error", content: String(e) }]);
+    }
+    setRunning(false);
+  };
+
+  const stepColor = (type: string) => {
+    if (type === "result") return "var(--green)";
+    if (type === "error") return "var(--red)";
+    if (type === "think") return "var(--amber)";
+    return "var(--text2)";
+  };
+
+  const stepIcon = (type: string) => {
+    if (type === "result") return "✓";
+    if (type === "error") return "✗";
+    if (type === "think") return "◆";
+    return "→";
+  };
+
+  return (
+    <div className="glass" style={{ borderRadius: "var(--radius)", padding: 20 }}>
+      <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
+        <input
+          value={task}
+          onChange={(e) => setTask(e.target.value)}
+          onKeyDown={(e) => e.key === "Enter" && runAgent()}
+          placeholder='e.g. "Go to google.com and search for Mamour Media"'
+          style={{
+            flex: 1, padding: "9px 12px",
+            background: "var(--glass)", border: "1px solid var(--border)",
+            borderRadius: "var(--radius-sm)", color: "var(--text)",
+            fontFamily: "inherit", fontSize: 13, outline: "none",
+          }}
+        />
+        <button
+          onClick={runAgent}
+          disabled={running || !task.trim()}
+          style={{
+            padding: "9px 18px",
+            background: running ? "var(--glass)" : "var(--amber-glow)",
+            border: `1px solid ${running ? "var(--border)" : "var(--amber-border)"}`,
+            borderRadius: "var(--radius-sm)", color: running ? "var(--text3)" : "var(--amber)",
+            fontSize: 13, cursor: running ? "default" : "pointer", fontFamily: "inherit",
+            whiteSpace: "nowrap",
+          }}
+        >
+          {running ? "Running…" : "▶ Run Agent"}
+        </button>
+      </div>
+
+      {steps.length > 0 && (
+        <div style={{
+          maxHeight: 320, overflowY: "auto", display: "flex",
+          flexDirection: "column", gap: 8, padding: "4px 0",
+        }}>
+          {steps.map((s, i) => (
+            <div key={i} style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+              <div style={{ display: "flex", gap: 8, alignItems: "flex-start" }}>
+                <span style={{ color: stepColor(s.type), fontSize: 12, marginTop: 1, flexShrink: 0 }}>
+                  {stepIcon(s.type)}
+                </span>
+                <span style={{ fontSize: 12, color: stepColor(s.type), lineHeight: 1.5 }}>
+                  {s.content}
+                </span>
+              </div>
+              {s.screenshot && (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={`data:image/png;base64,${s.screenshot}`}
+                  alt="screenshot"
+                  style={{ width: "100%", borderRadius: "var(--radius-sm)", border: "1px solid var(--border)", marginLeft: 20 }}
+                />
+              )}
+            </div>
+          ))}
+          <div ref={bottomRef} />
+        </div>
+      )}
+    </div>
+  );
+}
+
 function BrowserPanel() {
   const [url, setUrl] = useState("");
   const [action, setAction] = useState<"screenshot" | "content" | "scrape">("screenshot");
@@ -321,9 +443,15 @@ export default function Home() {
           </button>
         </div>
 
-        {/* Browser Automation */}
+        {/* Autonomous Agent */}
         <div className="detail-section" style={{ marginTop: 36 }}>
-          <p className="detail-label">Browser Automation — Browserless.io</p>
+          <p className="detail-label">Autonomous Browser Agent — Claude + Chrome</p>
+          <AgentPanel />
+        </div>
+
+        {/* Browser Automation */}
+        <div className="detail-section" style={{ marginTop: 24 }}>
+          <p className="detail-label">Browser Tools — Screenshot / Scrape</p>
           <BrowserPanel />
         </div>
 
