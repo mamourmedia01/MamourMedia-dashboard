@@ -51,6 +51,108 @@ const activeSkills = [
   "timeline-report", "do", "claude-code-plugin-release", "vercel-react-native-skills",
 ];
 
+function BrowserPanel() {
+  const [url, setUrl] = useState("");
+  const [action, setAction] = useState<"screenshot" | "content" | "scrape">("screenshot");
+  const [result, setResult] = useState<string | null>(null);
+  const [running, setRunning] = useState(false);
+
+  const run = async () => {
+    if (!url.trim()) return;
+    setRunning(true);
+    setResult(null);
+    try {
+      const res = await fetch("/api/browser", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action, url }),
+      });
+      const data = await res.json();
+      if (action === "screenshot" && data.image) {
+        setResult(`data:image/png;base64,${data.image}`);
+      } else {
+        setResult(JSON.stringify(data, null, 2));
+      }
+    } catch {
+      setResult("Error running browser task.");
+    }
+    setRunning(false);
+  };
+
+  return (
+    <div className="glass" style={{ borderRadius: "var(--radius)", padding: 20 }}>
+      <div style={{ display: "flex", gap: 8, marginBottom: 12, flexWrap: "wrap" }}>
+        {(["screenshot", "content", "scrape"] as const).map((a) => (
+          <button
+            key={a}
+            onClick={() => setAction(a)}
+            style={{
+              padding: "5px 14px",
+              borderRadius: "var(--radius-sm)",
+              border: `1px solid ${action === a ? "var(--amber-border)" : "var(--border)"}`,
+              background: action === a ? "var(--amber-glow)" : "var(--glass)",
+              color: action === a ? "var(--amber)" : "var(--text3)",
+              fontSize: 12,
+              cursor: "pointer",
+              fontFamily: "inherit",
+            }}
+          >
+            {a}
+          </button>
+        ))}
+      </div>
+      <div style={{ display: "flex", gap: 8 }}>
+        <input
+          value={url}
+          onChange={(e) => setUrl(e.target.value)}
+          placeholder="https://example.com"
+          onKeyDown={(e) => e.key === "Enter" && run()}
+          style={{
+            flex: 1,
+            padding: "8px 12px",
+            background: "var(--glass)",
+            border: "1px solid var(--border)",
+            borderRadius: "var(--radius-sm)",
+            color: "var(--text)",
+            fontFamily: "inherit",
+            fontSize: 13,
+            outline: "none",
+          }}
+        />
+        <button
+          onClick={run}
+          disabled={running || !url.trim()}
+          style={{
+            padding: "8px 16px",
+            background: "var(--amber-glow)",
+            border: "1px solid var(--amber-border)",
+            borderRadius: "var(--radius-sm)",
+            color: "var(--amber)",
+            fontSize: 13,
+            cursor: "pointer",
+            fontFamily: "inherit",
+            opacity: running ? 0.5 : 1,
+          }}
+        >
+          {running ? "Running…" : "Run"}
+        </button>
+      </div>
+      {result && (
+        <div style={{ marginTop: 12 }}>
+          {action === "screenshot" && result.startsWith("data:") ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={result} alt="screenshot" style={{ width: "100%", borderRadius: "var(--radius-sm)", border: "1px solid var(--border)" }} />
+          ) : (
+            <pre style={{ fontSize: 11, color: "var(--text2)", overflow: "auto", maxHeight: 200, padding: 12, background: "var(--glass)", borderRadius: "var(--radius-sm)" }}>
+              {result}
+            </pre>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function Home() {
   const [projects, setProjects] = useState<Project[]>(defaultProjects);
   const [activeProject, setActiveProject] = useState<string | null>(null);
@@ -217,6 +319,12 @@ export default function Home() {
             <span style={{ fontSize: 28 }}>+</span>
             <span style={{ fontSize: 13 }}>New Project</span>
           </button>
+        </div>
+
+        {/* Browser Automation */}
+        <div className="detail-section" style={{ marginTop: 36 }}>
+          <p className="detail-label">Browser Automation — Browserless.io</p>
+          <BrowserPanel />
         </div>
 
         {/* Active Skills */}
