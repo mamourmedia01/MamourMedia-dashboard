@@ -1,10 +1,45 @@
 {
   "version": 1,
   "skills": {
+    "claude-code-plugin-release": {
+      "source": "thedotmack/claude-mem",
+      "sourceType": "github",
+      "computedHash": "e5cebf283a3e35b76ae6c0824f1fe9870ae5b9c0c245df7005e0657a8d12c3fa"
+    },
     "deploy-to-vercel": {
       "source": "vercel-labs/agent-skills",
       "sourceType": "github",
       "computedHash": "d2b5bcc7c09fdb649129ffc7dd7b647ec1b155736974b974292675afd588cb39"
+    },
+    "do": {
+      "source": "thedotmack/claude-mem",
+      "sourceType": "github",
+      "computedHash": "ac80a2338872768e8d9e24bcad9d7a379019afa062167a20b525c4562405a2a3"
+    },
+    "knowledge-agent": {
+      "source": "thedotmack/claude-mem",
+      "sourceType": "github",
+      "computedHash": "52a8f2c5351a0b73b3c55296c3dcd46ade6070f66f0d59ccd01832a9f77123f6"
+    },
+    "make-plan": {
+      "source": "thedotmack/claude-mem",
+      "sourceType": "github",
+      "computedHash": "434613fbce55feb87a0da0d8d863c7c83ce1e76de4acb7cac3cc513dee876616"
+    },
+    "mem-search": {
+      "source": "thedotmack/claude-mem",
+      "sourceType": "github",
+      "computedHash": "17dc0edd05a1088d15afbaf331c1fd23005c7278b083a21a5f92cd1b1b8bdd32"
+    },
+    "smart-explore": {
+      "source": "thedotmack/claude-mem",
+      "sourceType": "github",
+      "computedHash": "8353f2b5b9669177d8a5716d7aa22ad816729e3db7c6e635fe6b095a24535344"
+    },
+    "timeline-report": {
+      "source": "thedotmack/claude-mem",
+      "sourceType": "github",
+      "computedHash": "4fd0be0b6500cc8ede58f5f6c044092c58269ead2ed60d2a169fc6f75122a928"
     },
     "vercel-cli-with-tokens": {
       "source": "vercel-labs/agent-skills",
