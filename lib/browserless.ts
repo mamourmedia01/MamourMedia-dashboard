@@ -1,22 +1,19 @@
-// Browserless BaaS v2
-// Auth: Authorization: Bearer <token>
+// Browserless BaaS
+// Auth: ?token=<key> query param
 // Endpoint: https://production-sfo.browserless.io (US)
 
 const BASE_URL = process.env.BROWSERLESS_BASE_URL ?? 'https://production-sfo.browserless.io';
 
-function headers() {
+function tokenParam() {
   const token = process.env.BROWSERLESS_API_KEY;
   if (!token) throw new Error('BROWSERLESS_API_KEY not set');
-  return {
-    'Content-Type': 'application/json',
-    Authorization: `Bearer ${token}`,
-  };
+  return `?token=${token}`;
 }
 
 export async function takeScreenshot(url: string): Promise<{ image: string }> {
-  const res = await fetch(`${BASE_URL}/chromium/screenshot`, {
+  const res = await fetch(`${BASE_URL}/chromium/screenshot${tokenParam()}`, {
     method: 'POST',
-    headers: headers(),
+    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ url, options: { type: 'png', fullPage: true }, waitForTimeout: 2000 }),
   });
   if (!res.ok) throw new Error(`Screenshot failed: ${res.status} ${await res.text()}`);
@@ -25,9 +22,9 @@ export async function takeScreenshot(url: string): Promise<{ image: string }> {
 }
 
 export async function getPageContent(url: string): Promise<{ url: string; title: string; content: string }> {
-  const res = await fetch(`${BASE_URL}/chromium/content`, {
+  const res = await fetch(`${BASE_URL}/chromium/content${tokenParam()}`, {
     method: 'POST',
-    headers: headers(),
+    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ url, waitForTimeout: 2000 }),
   });
   if (!res.ok) throw new Error(`Content failed: ${res.status} ${await res.text()}`);
@@ -37,9 +34,9 @@ export async function getPageContent(url: string): Promise<{ url: string; title:
 }
 
 export async function runScript(code: string, context?: Record<string, unknown>) {
-  const res = await fetch(`${BASE_URL}/chromium/function`, {
+  const res = await fetch(`${BASE_URL}/chromium/function${tokenParam()}`, {
     method: 'POST',
-    headers: headers(),
+    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ code, context: context ?? {} }),
   });
   if (!res.ok) throw new Error(`Script failed: ${res.status} ${await res.text()}`);
@@ -47,9 +44,9 @@ export async function runScript(code: string, context?: Record<string, unknown>)
 }
 
 export async function scrapePage(url: string, selectors: Record<string, string>) {
-  const res = await fetch(`${BASE_URL}/chromium/scrape`, {
+  const res = await fetch(`${BASE_URL}/chromium/scrape${tokenParam()}`, {
     method: 'POST',
-    headers: headers(),
+    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ url, elements: Object.values(selectors).map(s => ({ selector: s })), waitForTimeout: 2000 }),
   });
   if (!res.ok) throw new Error(`Scrape failed: ${res.status} ${await res.text()}`);

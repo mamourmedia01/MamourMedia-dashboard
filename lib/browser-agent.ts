@@ -40,6 +40,8 @@ export async function runBrowserAgent(
   if (!token) throw new Error('BROWSERLESS_API_KEY not set');
   if (!apiKey) throw new Error('ANTHROPIC_API_KEY not set');
 
+  const blParams = `?token=${token}`;
+
   const messages: { role: string; content: string }[] = [
     { role: 'user', content: `Task: ${task}` },
   ];
@@ -93,9 +95,9 @@ export async function runBrowserAgent(
     if (parsed.action === 'screenshot' && parsed.url) {
       onStep({ type: 'browse', content: `Taking screenshot of ${parsed.url}` });
       try {
-        const res = await fetch(`${BROWSERLESS_URL}/chromium/screenshot`, {
+        const res = await fetch(`${BROWSERLESS_URL}/chromium/screenshot${blParams}`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+          headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ url: parsed.url, options: { type: 'png', fullPage: true }, waitForTimeout: 2000 }),
         });
         const buf = await res.arrayBuffer();
@@ -114,9 +116,9 @@ export async function runBrowserAgent(
     if (parsed.action === 'browse' && parsed.code) {
       onStep({ type: 'browse', content: `Running browser script…` });
       try {
-        const res = await fetch(`${BROWSERLESS_URL}/chromium/function`, {
+        const res = await fetch(`${BROWSERLESS_URL}/chromium/function${blParams}`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+          headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ code: parsed.code }),
         });
         const data = await res.json();
