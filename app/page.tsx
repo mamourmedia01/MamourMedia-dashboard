@@ -1,522 +1,381 @@
-"use client";
+'use client';
 
-import { useState, useRef, useEffect } from "react";
-import { supabase } from "@/lib/supabase";
+import { useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
+import { supabase } from '@/lib/supabase';
+import Link from 'next/link';
 
-interface Message {
-  role: "user" | "assistant";
-  content: string;
-}
+// ── Types ─────────────────────────────────────────────────────
 
 interface Project {
   id: string;
   name: string;
-  subtitle: string;
-  description: string;
+  subtitle?: string;
+  description?: string;
   status: string;
   accent: string;
-  features: string[];
-  progress: number;
+  features?: string[];
+  progress?: number;
+  user_prompt?: string;
+  deployment_url?: string;
+  build_count?: number;
+  last_build_at?: string;
 }
 
-const defaultProjects: Project[] = [
-  {
-    id: "cine-labs",
-    name: "Cine Labs",
-    subtitle: "Cinema Labs — AI Content Studio",
-    description:
-      "End-to-end AI content automation studio. Script-to-screen pipeline with voice cloning, storyboarding, video generation, and character consistency.",
-    status: "active",
-    accent: "#d4a574",
-    features: ["Script & Content", "Storyboard", "Voice & Audio", "Video Generation", "Character Library", "Pipeline Status"],
-    progress: 65,
-  },
-  {
-    id: "admanager",
-    name: "AdManager",
-    subtitle: "AI Ad Platform",
-    description:
-      "AI-powered ad platform for campaign creation, targeting, A/B testing, and performance analytics at scale.",
-    status: "active",
-    accent: "#60a5fa",
-    features: ["Campaign Builder", "A/B Testing", "Analytics", "Audience Targeting"],
-    progress: 40,
-  },
+// ── Color accent swatches ─────────────────────────────────────
+
+const ACCENTS = [
+  { name: 'Amber', value: '#d4a574' },
+  { name: 'Blue',  value: '#60a5fa' },
+  { name: 'Purple', value: '#a78bfa' },
+  { name: 'Green', value: '#34d399' },
+  { name: 'Pink',  value: '#f472b6' },
 ];
 
-const activeSkills = [
-  "vercel-composition-patterns", "deploy-to-vercel", "vercel-react-best-practices",
-  "mem-search", "knowledge-agent", "make-plan", "smart-explore",
-  "web-design-guidelines", "vercel-react-view-transitions", "vercel-cli-with-tokens",
-  "timeline-report", "do", "claude-code-plugin-release", "vercel-react-native-skills",
-];
+// ── New Project Modal ─────────────────────────────────────────
 
-function AgentPanel() {
-  const [task, setTask] = useState("");
-  const [steps, setSteps] = useState<{ type: string; content: string; screenshot?: string }[]>([]);
-  const [running, setRunning] = useState(false);
-  const bottomRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: "smooth" }); }, [steps]);
-
-  const runAgent = async () => {
-    if (!task.trim() || running) return;
-    setSteps([]);
-    setRunning(true);
-
-    try {
-      const res = await fetch("/api/agent", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ task }),
-      });
-      const reader = res.body!.getReader();
-      const decoder = new TextDecoder();
-      let buf = "";
-
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        buf += decoder.decode(value, { stream: true });
-        const lines = buf.split("\n");
-        buf = lines.pop() ?? "";
-        for (const line of lines) {
-          if (!line.startsWith("data: ")) continue;
-          const payload = line.slice(6);
-          if (payload === "[DONE]") break;
-          try {
-            const step = JSON.parse(payload);
-            setSteps((prev) => [...prev, step]);
-          } catch { /* ignore */ }
-        }
-      }
-    } catch (e) {
-      setSteps((prev) => [...prev, { type: "error", content: String(e) }]);
-    }
-    setRunning(false);
-  };
-
-  const stepColor = (type: string) => {
-    if (type === "result") return "var(--green)";
-    if (type === "error") return "var(--red)";
-    if (type === "think") return "var(--amber)";
-    return "var(--text2)";
-  };
-
-  const stepIcon = (type: string) => {
-    if (type === "result") return "✓";
-    if (type === "error") return "✗";
-    if (type === "think") return "◆";
-    return "→";
-  };
-
-  return (
-    <div className="glass" style={{ borderRadius: "var(--radius)", padding: 20 }}>
-      <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
-        <input
-          value={task}
-          onChange={(e) => setTask(e.target.value)}
-          onKeyDown={(e) => e.key === "Enter" && runAgent()}
-          placeholder='e.g. "Go to google.com and search for Mamour Media"'
-          style={{
-            flex: 1, padding: "9px 12px",
-            background: "var(--glass)", border: "1px solid var(--border)",
-            borderRadius: "var(--radius-sm)", color: "var(--text)",
-            fontFamily: "inherit", fontSize: 13, outline: "none",
-          }}
-        />
-        <button
-          onClick={runAgent}
-          disabled={running || !task.trim()}
-          style={{
-            padding: "9px 18px",
-            background: running ? "var(--glass)" : "var(--amber-glow)",
-            border: `1px solid ${running ? "var(--border)" : "var(--amber-border)"}`,
-            borderRadius: "var(--radius-sm)", color: running ? "var(--text3)" : "var(--amber)",
-            fontSize: 13, cursor: running ? "default" : "pointer", fontFamily: "inherit",
-            whiteSpace: "nowrap",
-          }}
-        >
-          {running ? "Running…" : "▶ Run Agent"}
-        </button>
-      </div>
-
-      {steps.length > 0 && (
-        <div style={{
-          maxHeight: 320, overflowY: "auto", display: "flex",
-          flexDirection: "column", gap: 8, padding: "4px 0",
-        }}>
-          {steps.map((s, i) => (
-            <div key={i} style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-              <div style={{ display: "flex", gap: 8, alignItems: "flex-start" }}>
-                <span style={{ color: stepColor(s.type), fontSize: 12, marginTop: 1, flexShrink: 0 }}>
-                  {stepIcon(s.type)}
-                </span>
-                <span style={{ fontSize: 12, color: stepColor(s.type), lineHeight: 1.5 }}>
-                  {s.content}
-                </span>
-              </div>
-              {s.screenshot && (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img
-                  src={`data:image/png;base64,${s.screenshot}`}
-                  alt="screenshot"
-                  style={{ width: "100%", borderRadius: "var(--radius-sm)", border: "1px solid var(--border)", marginLeft: 20 }}
-                />
-              )}
-            </div>
-          ))}
-          <div ref={bottomRef} />
-        </div>
-      )}
-    </div>
-  );
-}
-
-function BrowserPanel() {
-  const [url, setUrl] = useState("");
-  const [action, setAction] = useState<"screenshot" | "content" | "scrape">("screenshot");
-  const [result, setResult] = useState<string | null>(null);
-  const [running, setRunning] = useState(false);
-
-  const run = async () => {
-    if (!url.trim()) return;
-    setRunning(true);
-    setResult(null);
-    try {
-      const res = await fetch("/api/browser", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action, url }),
-      });
-      const data = await res.json();
-      if (action === "screenshot" && data.image) {
-        setResult(`data:image/png;base64,${data.image}`);
-      } else {
-        setResult(JSON.stringify(data, null, 2));
-      }
-    } catch {
-      setResult("Error running browser task.");
-    }
-    setRunning(false);
-  };
-
-  return (
-    <div className="glass" style={{ borderRadius: "var(--radius)", padding: 20 }}>
-      <div style={{ display: "flex", gap: 8, marginBottom: 12, flexWrap: "wrap" }}>
-        {(["screenshot", "content", "scrape"] as const).map((a) => (
-          <button
-            key={a}
-            onClick={() => setAction(a)}
-            style={{
-              padding: "5px 14px",
-              borderRadius: "var(--radius-sm)",
-              border: `1px solid ${action === a ? "var(--amber-border)" : "var(--border)"}`,
-              background: action === a ? "var(--amber-glow)" : "var(--glass)",
-              color: action === a ? "var(--amber)" : "var(--text3)",
-              fontSize: 12,
-              cursor: "pointer",
-              fontFamily: "inherit",
-            }}
-          >
-            {a}
-          </button>
-        ))}
-      </div>
-      <div style={{ display: "flex", gap: 8 }}>
-        <input
-          value={url}
-          onChange={(e) => setUrl(e.target.value)}
-          placeholder="https://example.com"
-          onKeyDown={(e) => e.key === "Enter" && run()}
-          style={{
-            flex: 1,
-            padding: "8px 12px",
-            background: "var(--glass)",
-            border: "1px solid var(--border)",
-            borderRadius: "var(--radius-sm)",
-            color: "var(--text)",
-            fontFamily: "inherit",
-            fontSize: 13,
-            outline: "none",
-          }}
-        />
-        <button
-          onClick={run}
-          disabled={running || !url.trim()}
-          style={{
-            padding: "8px 16px",
-            background: "var(--amber-glow)",
-            border: "1px solid var(--amber-border)",
-            borderRadius: "var(--radius-sm)",
-            color: "var(--amber)",
-            fontSize: 13,
-            cursor: "pointer",
-            fontFamily: "inherit",
-            opacity: running ? 0.5 : 1,
-          }}
-        >
-          {running ? "Running…" : "Run"}
-        </button>
-      </div>
-      {result && (
-        <div style={{ marginTop: 12 }}>
-          {action === "screenshot" && result.startsWith("data:") ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img src={result} alt="screenshot" style={{ width: "100%", borderRadius: "var(--radius-sm)", border: "1px solid var(--border)" }} />
-          ) : (
-            <pre style={{ fontSize: 11, color: "var(--text2)", overflow: "auto", maxHeight: 200, padding: 12, background: "var(--glass)", borderRadius: "var(--radius-sm)" }}>
-              {result}
-            </pre>
-          )}
-        </div>
-      )}
-    </div>
-  );
-}
-
-export default function Home() {
-  const [projects, setProjects] = useState<Project[]>(defaultProjects);
-  const [activeProject, setActiveProject] = useState<string | null>(null);
-  const [chatOpen, setChatOpen] = useState(false);
-  const [messages, setMessages] = useState<Message[]>([]);
-  const [input, setInput] = useState("");
+function NewProjectModal({ onClose, onCreated }: {
+  onClose: () => void;
+  onCreated: (id: string) => void;
+}) {
+  const [name, setName] = useState('');
+  const [prompt, setPrompt] = useState('');
+  const [accent, setAccent] = useState('#d4a574');
+  const [compUrl1, setCompUrl1] = useState('');
+  const [compUrl2, setCompUrl2] = useState('');
   const [loading, setLoading] = useState(false);
-  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const [error, setError] = useState('');
 
-  // Load projects from Supabase
-  useEffect(() => {
-    supabase
-      .from("projects")
-      .select("*")
-      .order("created_at")
-      .then(({ data }) => {
-        if (data && data.length > 0) setProjects(data as Project[]);
-      });
-  }, []);
-
-  // Load chat history when project changes
-  useEffect(() => {
-    if (!chatOpen) return;
-    fetch(`/api/messages${activeProject ? `?project_id=${activeProject}` : ""}`)
-      .then((r) => r.json())
-      .then(({ messages: saved }) => {
-        if (saved?.length) setMessages(saved);
-        else setMessages([]);
-      })
-      .catch(() => setMessages([]));
-  }, [activeProject, chatOpen]);
-
-  useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages]);
-
-  const sendMessage = async () => {
-    if (!input.trim() || loading) return;
-    const userMsg = input.trim();
-    setInput("");
-    const updatedMessages = [...messages, { role: "user" as const, content: userMsg }];
-    setMessages(updatedMessages);
+  const handleSubmit = async () => {
+    if (!name.trim() || !prompt.trim()) {
+      setError('App name and description are required.');
+      return;
+    }
     setLoading(true);
-
-    // Persist user message
-    fetch("/api/messages", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ project_id: activeProject, role: "user", content: userMsg }),
-    });
+    setError('');
 
     try {
-      const currentProject = projects.find((p) => p.id === activeProject);
-      const res = await fetch("/api/chat", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
+      const res = await fetch('/api/projects', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          messages: updatedMessages,
-          systemPrompt: `You are the AI operating system for Mamour Media's master dashboard at mamourmedia.com. You replace Emergent AI as the central platform. ${
-            currentProject
-              ? `The user is currently viewing the ${currentProject.name} project (${currentProject.subtitle}).`
-              : "The user is on the main dashboard."
-          } You have access to 14 active agent skills including mem-search, knowledge-agent, make-plan, smart-explore, and deploy-to-vercel. Help the user build, automate, and execute tasks across their projects: Cine Labs (AI content automation studio) and AdManager (AI ad platform). Be concise and action-oriented.`,
+          name: name.trim(),
+          userPrompt: prompt.trim(),
+          competitorUrls: [compUrl1, compUrl2].filter(Boolean),
+          accent,
         }),
       });
-      const data = await res.json();
-      setMessages((prev) => [...prev, { role: "assistant", content: data.content }]);
-
-      // Persist assistant message
-      fetch("/api/messages", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ project_id: activeProject, role: "assistant", content: data.content }),
-      });
-    } catch {
-      setMessages((prev) => [...prev, { role: "assistant", content: "Error connecting to Claude." }]);
+      const data = await res.json() as { project?: { id: string }; error?: string };
+      if (!res.ok || data.error) {
+        setError(data.error ?? 'Failed to create project');
+        setLoading(false);
+        return;
+      }
+      onCreated(data.project!.id);
+    } catch (e) {
+      setError(String(e));
+      setLoading(false);
     }
-    setLoading(false);
   };
 
   return (
-    <div className="app">
-      {/* ── Sidebar ── */}
-      <aside className="sidebar">
-        <div className="sidebar-logo">
-          <div className="logo-mark" />
-          <span className="logo-text">Mamour Media</span>
-        </div>
-        <nav className="sidebar-nav">
-          <button className="nav-item active"><span>Dashboard</span></button>
-          <button className="nav-item"><span>Settings</span></button>
-        </nav>
-        <div className="sidebar-projects">
-          <p className="sidebar-section-label">Projects</p>
-          {projects.map((p) => (
-            <button
-              key={p.id}
-              onClick={() => setActiveProject(p.id === activeProject ? null : p.id)}
-              className={`project-item ${activeProject === p.id ? "active" : ""}`}
-            >
-              <div className="project-dot" style={{ background: p.accent }} />
-              <span>{p.name}</span>
-            </button>
-          ))}
-          <button className="project-item add-project"><span>+ New Project</span></button>
-        </div>
-        <div className="sidebar-footer">
-          <div className="user-badge">
-            <div className="user-avatar">M</div>
-            <span style={{ fontSize: 13, color: "var(--text2)" }}>Mamour</span>
-          </div>
-        </div>
-      </aside>
-
-      {/* ── Main ── */}
-      <main className={`main-content ${chatOpen ? "chat-open" : ""}`}>
-        <div className="content-header">
+    <div
+      style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.72)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, backdropFilter: 'blur(4px)', animation: 'fadeIn 0.15s ease-out' }}
+      onClick={e => { if (e.target === e.currentTarget) onClose(); }}
+    >
+      <div style={{ background: 'var(--bg2)', border: '1px solid var(--glass-border)', borderRadius: 16, padding: 28, width: '100%', maxWidth: 520, boxShadow: '0 24px 64px rgba(0,0,0,0.5)', animation: 'slideInRight 0.2s ease-out' }}>
+        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 24 }}>
           <div>
-            <h1 className="page-title">Mamour Media</h1>
-            <p className="page-sub">AI Operating Platform — All projects launch from here</p>
+            <h2 style={{ margin: 0, fontSize: 20, fontWeight: 700 }}>New Project</h2>
+            <p style={{ margin: '4px 0 0', color: 'var(--text3)', fontSize: 13 }}>Describe what you want — Claude builds and deploys it autonomously.</p>
           </div>
-          <button className="btn-chat-toggle" onClick={() => setChatOpen(!chatOpen)}>
-            {chatOpen ? "✕ Close Claude" : "◆ Open Claude"}
+          <button onClick={onClose} style={{ background: 'none', border: 'none', color: 'var(--text3)', cursor: 'pointer', fontSize: 22, lineHeight: 1, padding: 0 }}>×</button>
+        </div>
+
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+          <div>
+            <label style={{ display: 'block', fontSize: 11, color: 'var(--text3)', fontWeight: 700, marginBottom: 6, letterSpacing: '0.06em', textTransform: 'uppercase' }}>App Name</label>
+            <input
+              autoFocus
+              value={name}
+              onChange={e => setName(e.target.value)}
+              placeholder="e.g. AI CRM, Marketing Dashboard, SaaS Landing Page…"
+              style={{ width: '100%', boxSizing: 'border-box', background: 'var(--glass)', border: '1px solid var(--glass-border)', borderRadius: 8, color: 'var(--text)', padding: '10px 12px', fontSize: 14, fontFamily: 'inherit', outline: 'none' }}
+            />
+          </div>
+
+          <div>
+            <label style={{ display: 'block', fontSize: 11, color: 'var(--text3)', fontWeight: 700, marginBottom: 6, letterSpacing: '0.06em', textTransform: 'uppercase' }}>Accent Color</label>
+            <div style={{ display: 'flex', gap: 8 }}>
+              {ACCENTS.map(a => (
+                <button
+                  key={a.value}
+                  onClick={() => setAccent(a.value)}
+                  title={a.name}
+                  style={{ width: 28, height: 28, borderRadius: '50%', background: a.value, border: accent === a.value ? '2px solid #fff' : '2px solid transparent', cursor: 'pointer', outline: accent === a.value ? `2px solid ${a.value}` : 'none', outlineOffset: 1, transition: 'all 0.15s' }}
+                />
+              ))}
+            </div>
+          </div>
+
+          <div>
+            <label style={{ display: 'block', fontSize: 11, color: 'var(--text3)', fontWeight: 700, marginBottom: 6, letterSpacing: '0.06em', textTransform: 'uppercase' }}>What Do You Want to Build?</label>
+            <textarea
+              value={prompt}
+              onChange={e => setPrompt(e.target.value)}
+              placeholder="Be specific — describe features, target users, design style, integrations. The more detail you give, the better the AI builds."
+              rows={5}
+              style={{ width: '100%', boxSizing: 'border-box', background: 'var(--glass)', border: '1px solid var(--glass-border)', borderRadius: 8, color: 'var(--text)', padding: '10px 12px', fontSize: 14, fontFamily: 'inherit', outline: 'none', resize: 'vertical', lineHeight: 1.5 }}
+            />
+          </div>
+
+          <div>
+            <label style={{ display: 'block', fontSize: 11, color: 'var(--text3)', fontWeight: 700, marginBottom: 6, letterSpacing: '0.06em', textTransform: 'uppercase' }}>Competitor URLs (Optional — We&apos;ll Build Something Better)</label>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <input value={compUrl1} onChange={e => setCompUrl1(e.target.value)} placeholder="https://competitor.com" style={{ flex: 1, background: 'var(--glass)', border: '1px solid var(--glass-border)', borderRadius: 8, color: 'var(--text)', padding: '9px 12px', fontSize: 13, fontFamily: 'inherit', outline: 'none' }} />
+              <input value={compUrl2} onChange={e => setCompUrl2(e.target.value)} placeholder="https://another.com" style={{ flex: 1, background: 'var(--glass)', border: '1px solid var(--glass-border)', borderRadius: 8, color: 'var(--text)', padding: '9px 12px', fontSize: 13, fontFamily: 'inherit', outline: 'none' }} />
+            </div>
+          </div>
+
+          {error && (
+            <div style={{ color: 'var(--red)', fontSize: 13, padding: '8px 12px', background: 'rgba(239,68,68,0.08)', borderRadius: 6 }}>{error}</div>
+          )}
+
+          <button
+            onClick={handleSubmit}
+            disabled={loading}
+            style={{ background: loading ? 'var(--glass)' : `linear-gradient(135deg, ${accent}, ${accent}cc)`, color: loading ? 'var(--text3)' : '#000', border: 'none', borderRadius: 8, padding: '12px', fontSize: 14, fontWeight: 700, cursor: loading ? 'not-allowed' : 'pointer', transition: 'all 0.2s', marginTop: 4 }}
+          >
+            {loading ? 'Creating project…' : '⚡ Build It'}
           </button>
         </div>
+      </div>
+    </div>
+  );
+}
 
-        {/* Project Cards */}
-        <div className="dashboard-grid">
-          {projects.map((p) => (
-            <div
-              key={p.id}
-              className="project-card glass"
-              style={{ "--accent": p.accent } as React.CSSProperties}
-              onClick={() => setActiveProject(p.id === activeProject ? null : p.id)}
-            >
-              <div className="card-header">
-                <span className="card-title">{p.name}</span>
-                <span className={`status-badge ${p.status}`}>{p.status}</span>
-              </div>
-              <p style={{ fontSize: 11, color: p.accent, marginBottom: 6, fontWeight: 500 }}>
-                {p.subtitle}
-              </p>
-              <p className="card-desc">{p.description}</p>
-              <div className="card-skills">
-                {p.features.slice(0, 3).map((f) => (
-                  <span key={f} className="skill-tag">{f}</span>
-                ))}
-                {p.features.length > 3 && (
-                  <span className="skill-tag more">+{p.features.length - 3}</span>
-                )}
-              </div>
-              <div className="card-progress">
-                <div className="progress-bar">
-                  <div
-                    className="progress-fill"
-                    style={{ width: `${p.progress}%`, background: `linear-gradient(90deg, ${p.accent}, ${p.accent}88)` }}
-                  />
-                </div>
-                <span className="progress-label">{p.progress}%</span>
+// ── Project Card ──────────────────────────────────────────────
+
+function ProjectCard({ project }: { project: Project }) {
+  const isBuilding = project.status === 'building';
+  const isLive = !!project.deployment_url;
+
+  return (
+    <Link href={`/project/${project.id}`} style={{ textDecoration: 'none', display: 'block' }}>
+      <div
+        style={{ background: 'var(--glass)', border: '1px solid var(--glass-border)', borderRadius: 14, padding: 20, cursor: 'pointer', transition: 'all 0.2s', height: '100%', boxSizing: 'border-box', display: 'flex', flexDirection: 'column', gap: 12, position: 'relative', overflow: 'hidden' }}
+        onMouseEnter={e => {
+          const el = e.currentTarget as HTMLDivElement;
+          el.style.borderColor = project.accent + '60';
+          el.style.transform = 'translateY(-2px)';
+          el.style.boxShadow = `0 8px 32px ${project.accent}20`;
+        }}
+        onMouseLeave={e => {
+          const el = e.currentTarget as HTMLDivElement;
+          el.style.borderColor = 'var(--glass-border)';
+          el.style.transform = 'translateY(0)';
+          el.style.boxShadow = 'none';
+        }}
+      >
+        <div style={{ position: 'absolute', top: -30, right: -30, width: 80, height: 80, borderRadius: '50%', background: project.accent, opacity: 0.08, filter: 'blur(20px)', pointerEvents: 'none' }} />
+
+        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 8 }}>
+          <div style={{ width: 36, height: 36, borderRadius: 8, background: project.accent + '20', border: `1px solid ${project.accent}40`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 15, fontWeight: 700, color: project.accent }}>
+            {project.name.charAt(0).toUpperCase()}
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            <span style={{ width: 7, height: 7, borderRadius: '50%', background: isBuilding ? 'var(--amber)' : isLive ? 'var(--green)' : 'var(--text3)', animation: isBuilding ? 'pulse 1.5s ease-in-out infinite' : 'none', flexShrink: 0 }} />
+            <span style={{ fontSize: 11, color: 'var(--text3)', textTransform: 'capitalize' }}>
+              {isBuilding ? 'building' : isLive ? 'live' : project.status}
+            </span>
+          </div>
+        </div>
+
+        <div>
+          <h3 style={{ margin: 0, fontSize: 15, fontWeight: 700, color: 'var(--text)' }}>{project.name}</h3>
+          {project.subtitle && <p style={{ margin: '3px 0 0', fontSize: 12, color: 'var(--text3)' }}>{project.subtitle}</p>}
+        </div>
+
+        {project.description && (
+          <p style={{ margin: 0, fontSize: 12, color: 'var(--text2)', lineHeight: 1.5, flex: 1, overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' }}>
+            {project.description}
+          </p>
+        )}
+
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 'auto' }}>
+          {isLive ? (
+            <span style={{ fontSize: 11, color: 'var(--green)', fontWeight: 600 }}>↗ Live</span>
+          ) : (
+            <span style={{ fontSize: 11, color: 'var(--text3)' }}>
+              {project.build_count ? `${project.build_count} build${project.build_count !== 1 ? 's' : ''}` : 'Not deployed'}
+            </span>
+          )}
+          <span style={{ fontSize: 11, color: project.accent, fontWeight: 600 }}>Open →</span>
+        </div>
+      </div>
+    </Link>
+  );
+}
+
+// ── Main Dashboard ────────────────────────────────────────────
+
+export default function Dashboard() {
+  const router = useRouter();
+  const [projects, setProjects] = useState<Project[]>([]);
+  const [showModal, setShowModal] = useState(false);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    fetch('/api/projects')
+      .then(r => r.json())
+      .then((d: { projects?: Project[] }) => {
+        if (d.projects) setProjects(d.projects);
+        setLoading(false);
+      })
+      .catch(() => setLoading(false));
+  }, []);
+
+  // Also try loading from Supabase directly as fallback
+  useEffect(() => {
+    supabase.from('projects').select('*').order('created_at', { ascending: false })
+      .then(({ data }) => { if (data && data.length > 0) setProjects(data as Project[]); });
+  }, []);
+
+  const handleProjectCreated = (id: string) => {
+    setShowModal(false);
+    router.push(`/project/${id}?autostart=1`);
+  };
+
+  const liveCount = projects.filter(p => p.deployment_url).length;
+  const totalBuilds = projects.reduce((sum, p) => sum + (p.build_count ?? 0), 0);
+
+  return (
+    <div style={{ minHeight: '100vh', background: 'var(--bg)', color: 'var(--text)', fontFamily: 'Inter, system-ui, sans-serif' }}>
+      <div style={{ display: 'flex', minHeight: '100vh' }}>
+        {/* Sidebar */}
+        <aside style={{ width: 220, borderRight: '1px solid var(--glass-border)', display: 'flex', flexDirection: 'column', position: 'fixed', top: 0, left: 0, bottom: 0, zIndex: 10, background: 'var(--bg)' }}>
+          {/* Logo */}
+          <div style={{ padding: '20px 16px', borderBottom: '1px solid var(--glass-border)' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <div style={{ width: 32, height: 32, borderRadius: 8, background: 'linear-gradient(135deg, var(--amber), #e8b882)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 900, fontSize: 16, color: '#000' }}>M</div>
+              <div>
+                <div style={{ fontWeight: 800, fontSize: 14, letterSpacing: '-0.01em' }}>Mamour Media</div>
+                <div style={{ fontSize: 10, color: 'var(--text3)', letterSpacing: '0.04em' }}>AI Platform</div>
               </div>
             </div>
-          ))}
-          <button className="project-card add-card glass" style={{ cursor: "pointer" }}>
-            <span style={{ fontSize: 28 }}>+</span>
-            <span style={{ fontSize: 13 }}>New Project</span>
-          </button>
-        </div>
+          </div>
 
-        {/* Autonomous Agent */}
-        <div className="detail-section" style={{ marginTop: 36 }}>
-          <p className="detail-label">Autonomous Browser Agent — Claude + Chrome</p>
-          <AgentPanel />
-        </div>
+          {/* Nav */}
+          <nav style={{ padding: '12px 8px' }}>
+            <div style={{ background: 'rgba(212,165,116,0.1)', borderRadius: 6, padding: '8px 12px', color: 'var(--amber)', fontSize: 13, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 8 }}>
+              <span>⊞</span> Dashboard
+            </div>
+            <Link href="/tools" style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 12px', borderRadius: 6, textDecoration: 'none', color: 'var(--text2)', fontSize: 13, marginTop: 1, transition: 'background 0.15s' }}
+              onMouseEnter={e => (e.currentTarget.style.background = 'var(--glass)')}
+              onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
+            >
+              <span>⚙</span> Tools
+            </Link>
+          </nav>
 
-        {/* Browser Automation */}
-        <div className="detail-section" style={{ marginTop: 24 }}>
-          <p className="detail-label">Browser Tools — Screenshot / Scrape</p>
-          <BrowserPanel />
-        </div>
-
-        {/* Active Skills */}
-        <div className="detail-section" style={{ marginTop: 36 }}>
-          <p className="detail-label">Active Skills ({activeSkills.length})</p>
-          <div className="skills-grid">
-            {activeSkills.map((s) => (
-              <div key={s} className="skill-card glass">
-                <span>⚡</span>
-                <span>{s}</span>
-              </div>
+          {/* Projects in sidebar */}
+          <div style={{ flex: 1, overflowY: 'auto', padding: '0 8px 12px' }}>
+            <div style={{ fontSize: 10, color: 'var(--text3)', letterSpacing: '0.08em', textTransform: 'uppercase', padding: '8px 8px 4px' }}>Projects</div>
+            {projects.map(p => (
+              <Link key={p.id} href={`/project/${p.id}`} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '7px 8px', borderRadius: 6, textDecoration: 'none', color: 'var(--text2)', fontSize: 12, transition: 'background 0.15s' }}
+                onMouseEnter={e => (e.currentTarget.style.background = 'var(--glass)')}
+                onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
+              >
+                <span style={{ width: 6, height: 6, borderRadius: '50%', background: p.deployment_url ? 'var(--green)' : p.status === 'building' ? 'var(--amber)' : 'var(--text3)', flexShrink: 0 }} />
+                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.name}</span>
+              </Link>
             ))}
           </div>
-        </div>
-      </main>
 
-      {/* ── Claude Chat Panel ── */}
-      {chatOpen && (
-        <div className="chat-panel glass-dark">
-          <div className="chat-header">
-            <div className="chat-title">
-              ◆ Claude
-              {activeProject && (
-                <span className="chat-context" style={{ color: "var(--text3)", marginLeft: 6 }}>
-                  · {projects.find((p) => p.id === activeProject)?.name}
-                </span>
-              )}
-            </div>
-            <button className="chat-close" onClick={() => setChatOpen(false)}>✕</button>
+          {/* New project CTA */}
+          <div style={{ padding: '12px 8px', borderTop: '1px solid var(--glass-border)' }}>
+            <button
+              onClick={() => setShowModal(true)}
+              style={{ width: '100%', background: 'linear-gradient(135deg, var(--amber), #e8b882)', color: '#000', border: 'none', borderRadius: 8, padding: '9px', fontWeight: 700, fontSize: 13, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, transition: 'opacity 0.15s' }}
+              onMouseEnter={e => (e.currentTarget.style.opacity = '0.9')}
+              onMouseLeave={e => (e.currentTarget.style.opacity = '1')}
+            >
+              + New Project
+            </button>
           </div>
-          <div className="chat-messages">
-            {messages.length === 0 ? (
-              <div className="chat-empty">
-                <span style={{ fontSize: 32 }}>◆</span>
-                <span>Ask Claude anything</span>
-                <span style={{ fontSize: 12, color: "var(--text3)" }}>Build · Automate · Execute</span>
-              </div>
-            ) : (
-              messages.map((m, i) => (
-                <div key={i} className={`chat-msg ${m.role}`}>
-                  <div className="msg-bubble">{m.content}</div>
+        </aside>
+
+        {/* Main */}
+        <main style={{ flex: 1, marginLeft: 220, padding: '40px 48px', minHeight: '100vh', boxSizing: 'border-box' }}>
+          {/* Hero */}
+          <div style={{ marginBottom: 40 }}>
+            <h1 style={{ margin: '0 0 10px', fontSize: 32, fontWeight: 800, letterSpacing: '-0.02em', lineHeight: 1.2 }}>
+              Build anything.{' '}
+              <span style={{ background: 'linear-gradient(135deg, var(--amber), #e8b882)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', backgroundClip: 'text' }}>
+                Deploy instantly.
+              </span>
+            </h1>
+            <p style={{ margin: '0 0 28px', color: 'var(--text2)', fontSize: 16, lineHeight: 1.6, maxWidth: 540 }}>
+              Describe your app — Claude architects it, researches competitors, generates production code, and deploys it live. Bugs are auto-fixed. Enhancements are auto-applied.
+            </p>
+
+            {/* Stats */}
+            <div style={{ display: 'flex', gap: 12 }}>
+              {[
+                { label: 'Projects', value: projects.length, color: 'var(--amber)' },
+                { label: 'Live Apps', value: liveCount, color: 'var(--green)' },
+                { label: 'Total Builds', value: totalBuilds, color: 'var(--blue)' },
+              ].map(s => (
+                <div key={s.label} style={{ background: 'var(--glass)', border: '1px solid var(--glass-border)', borderRadius: 10, padding: '12px 20px' }}>
+                  <div style={{ fontSize: 24, fontWeight: 800, color: s.color, lineHeight: 1 }}>{s.value}</div>
+                  <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 3 }}>{s.label}</div>
                 </div>
-              ))
-            )}
-            {loading && (
-              <div className="chat-msg assistant">
-                <div className="msg-bubble typing"><span /><span /><span /></div>
+              ))}
+            </div>
+          </div>
+
+          {/* Grid */}
+          {loading ? (
+            <div style={{ color: 'var(--text3)', fontSize: 14 }}>Loading projects…</div>
+          ) : (
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 16 }}>
+              {/* New project card */}
+              <div
+                onClick={() => setShowModal(true)}
+                style={{ background: 'var(--glass)', border: '1px dashed var(--glass-border)', borderRadius: 14, padding: 20, cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 12, minHeight: 190, transition: 'all 0.2s' }}
+                onMouseEnter={e => { const el = e.currentTarget as HTMLDivElement; el.style.borderColor = 'var(--amber)'; el.style.background = 'rgba(212,165,116,0.04)'; }}
+                onMouseLeave={e => { const el = e.currentTarget as HTMLDivElement; el.style.borderColor = 'var(--glass-border)'; el.style.background = 'var(--glass)'; }}
+              >
+                <div style={{ width: 48, height: 48, borderRadius: 12, background: 'rgba(212,165,116,0.1)', border: '1px solid rgba(212,165,116,0.3)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 24, color: 'var(--amber)' }}>+</div>
+                <div style={{ textAlign: 'center' }}>
+                  <div style={{ fontWeight: 700, fontSize: 14, color: 'var(--text)', marginBottom: 4 }}>New Project</div>
+                  <div style={{ fontSize: 12, color: 'var(--text3)', lineHeight: 1.4 }}>Describe what to build — AI does the rest</div>
+                </div>
               </div>
-            )}
-            <div ref={messagesEndRef} />
-          </div>
-          <div className="chat-input-area">
-            <textarea
-              className="chat-input"
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendMessage(); } }}
-              placeholder="Message Claude..."
-              rows={1}
-            />
-            <button className="chat-send" onClick={sendMessage} disabled={loading || !input.trim()}>↑</button>
-          </div>
-        </div>
-      )}
+
+              {/* Project cards */}
+              {projects.map(p => <ProjectCard key={p.id} project={p} />)}
+            </div>
+          )}
+
+          {/* Empty state */}
+          {!loading && projects.length === 0 && (
+            <div style={{ textAlign: 'center', padding: '80px 20px', color: 'var(--text3)' }}>
+              <div style={{ fontSize: 56, marginBottom: 20 }}>⚡</div>
+              <div style={{ fontSize: 20, fontWeight: 700, color: 'var(--text)', marginBottom: 8 }}>No projects yet</div>
+              <div style={{ fontSize: 14, marginBottom: 28 }}>Create your first AI-powered app in seconds</div>
+              <button
+                onClick={() => setShowModal(true)}
+                style={{ background: 'linear-gradient(135deg, var(--amber), #e8b882)', color: '#000', border: 'none', borderRadius: 8, padding: '11px 28px', fontWeight: 700, fontSize: 14, cursor: 'pointer' }}
+              >
+                Build Something
+              </button>
+            </div>
+          )}
+        </main>
+      </div>
+
+      {showModal && <NewProjectModal onClose={() => setShowModal(false)} onCreated={handleProjectCreated} />}
     </div>
   );
 }

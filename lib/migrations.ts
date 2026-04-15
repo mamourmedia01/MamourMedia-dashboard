@@ -53,4 +53,14 @@ export async function runMigrations() {
   } else {
     console.log('[migrations] ✓ Projects seeded');
   }
+
+  // Validate platform tables exist (warn if schema-v2 DDL hasn't been run)
+  for (const table of ['builds', 'build_events', 'project_files']) {
+    const { error: tableErr } = await supabase.from(table).select('id').limit(1);
+    if (tableErr?.code === '42P01') {
+      console.warn(
+        `[migrations] Table "${table}" missing — run the platform schema SQL in Supabase SQL Editor (supabase/schema.sql)`,
+      );
+    }
+  }
 }
